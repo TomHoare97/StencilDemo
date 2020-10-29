@@ -7,7 +7,9 @@
 #include "../../Common/UploadBuffer.h"
 #include "../../Common/GeometryGenerator.h"
 #include "FrameResource.h"
-#include "Globals.h"
+#include "GameLoader.h"
+
+//#include "Globals.h"
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
@@ -16,68 +18,6 @@ using namespace DirectX::PackedVector;
 #pragma comment(lib, "D3D12.lib")
 
 const int gNumFrameResources = 3;
-
-// Lightweight structure stores parameters to draw a shape.  This will
-// vary from app-to-app.
-//struct RenderItem
-//{
-//	RenderItem() = default;
-//
-//    // World matrix of the shape that describes the object's local space
-//    // relative to the world space, which defines the position, orientation,
-//
-//	XMFLOAT3 Position =  XMFLOAT3{ 0,0,0 };
-//	XMFLOAT3 Rotation;
-//	XMFLOAT3 Scale = XMFLOAT3{ 1,1,1 };
-//
-//    // and scale of the object in the world.
-//	XMFLOAT4X4 World = MathHelper::Identity4x4();
-//
-//	void Update()
-//	{
-//
-//		XMMATRIX Rotate = XMMatrixRotationY(Rotation.y );
-//		XMMATRIX scale = XMMatrixScaling(Scale.x, Scale.y, Scale.z);
-//		XMMATRIX Offset = XMMatrixTranslation(Position.x, Position.y, Position.z);
-//		XMMATRIX world = Rotate*scale * Offset;
-//		XMStoreFloat4x4(&World, world);
-//
-//		
-//
-//	}
-//
-//	XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
-//
-//	// Dirty flag indicating the object data has changed and we need to update the constant buffer.
-//	// Because we have an object cbuffer for each FrameResource, we have to apply the
-//	// update to each FrameResource.  Thus, when we modify obect data we should set 
-//	// NumFramesDirty = gNumFrameResources so that each frame resource gets the update.
-//	int NumFramesDirty = gNumFrameResources;
-//
-//	// Index into GPU constant buffer corresponding to the ObjectCB for this render item.
-//	UINT ObjCBIndex = -1;
-//
-//	Material* Mat = nullptr;
-//	MeshGeometry* Geo = nullptr;
-//
-//    // Primitive topology.
-//    D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-//
-//    // DrawIndexedInstanced parameters.
-//    UINT IndexCount = 0;
-//    UINT StartIndexLocation = 0;
-//    int BaseVertexLocation = 0;
-//};
-
-enum class RenderLayer : int
-{
-	Opaque = 0,
-	Mirrors ,
-	Reflected,
-	Transparent,
-	Shadow,
-	Count
-};
 
 class StencilApp : public D3DApp
 {
@@ -105,7 +45,7 @@ private:
 	void UpdateMaterialCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
 	void UpdateReflectedPassCB(const GameTimer& gt);
-	RenderItem* CreateRenderItem(std::string name, std::string mesh, std::string submesh, std::string mat, int layer);
+	//RenderItem* CreateRenderItem(std::string name, std::string mesh, std::string submesh, std::string mat, int layer);
 	void LoadTextures();
     void BuildRootSignature();
 	void BuildDescriptorHeaps();
@@ -124,6 +64,7 @@ private:
 	void CreateDirectionalLight(XMFLOAT3 direction, XMFLOAT3 strength);
 	void CreatePointLight(XMFLOAT3 position, XMFLOAT3 strength, float fallOffStart, float fallOffEnd);
 	void CreateSpotLight(XMFLOAT3 direction, XMFLOAT3 position, XMFLOAT3 strength, float spotPower, float fallOffStart, float fallOffEnd);
+	void LoadScene(int index);
 private:
 
     std::vector<std::unique_ptr<FrameResource>> mFrameResources;
@@ -136,8 +77,8 @@ private:
 
 	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 
-	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
-	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
+
+	
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
 	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
@@ -150,10 +91,7 @@ private:
 	RenderItem* mShadowedSkullRitem = nullptr;
 	RenderItem* flame = nullptr;
 	// List of all the render items.
-	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
-
-	// Render items divided by PSO.
-	std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
+	
 
     PassConstants mMainPassCB;
 	PassConstants mReflectedPassCB;
@@ -226,6 +164,7 @@ bool StencilApp::Initialize()
 	BuildFirePlane();
 	BuildMaterials();
     BuildRenderItems();
+	
 	CreatePointLight(flame->Position, { 1, 0.5f, 0.3f }, 2, 5);
     BuildFrameResources();
     BuildPSOs();
@@ -296,7 +235,8 @@ void StencilApp::Draw(const GameTimer& gt)
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
     // Clear the back buffer and depth buffer.
-    mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float*)&mMainPassCB.FogColor, 0, nullptr);
+	XMVECTORF32 ActualDarkGrey = { { { 0.100000000f, 0.100000000f, 0.100000000f, 1.000000000f } } };
+    mCommandList->ClearRenderTargetView(CurrentBackBufferView(), ActualDarkGrey, 0, nullptr);
     mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
     // Specify the buffers we are going to render to.
@@ -412,8 +352,8 @@ void StencilApp::OnKeyboardInput(const GameTimer& gt)
 
 	const float dt = gt.DeltaTime();
 
-	if(GetAsyncKeyState('A') & 0x8000)
-		mSkullTranslation.x -= 1.0f*dt;
+	if (GetAsyncKeyState('A') & 0x8000)
+		LoadScene(1);
 
 	if(GetAsyncKeyState('D') & 0x8000)
 		mSkullTranslation.x += 1.0f*dt;
@@ -583,10 +523,10 @@ void StencilApp::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.TotalTime = gt.TotalTime();
 	mMainPassCB.DeltaTime = gt.DeltaTime();
 	mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.35f, 1.0f };
-	//mMainPassCB.Lights[0].Strength = { 1.f, 0.5f, 0.3f }; 
-	//mMainPassCB.Lights[0].Position = flame->Position;
-	//mMainPassCB.Lights[0].FalloffStart = 2;
-	//mMainPassCB.Lights[0].FalloffEnd = 5 + (sinf(gt.TotalTime()*2) * 2);
+	mMainPassCB.Lights[0].Strength = { 1.f, 0.5f, 0.3f }; 
+	mMainPassCB.Lights[0].Position = flame->Position;
+	mMainPassCB.Lights[0].FalloffStart = 2;
+	mMainPassCB.Lights[0].FalloffEnd = 5 + (sinf(gt.TotalTime()*2) * 2);
 	
 	
 	// Main pass stored in index 2
@@ -1266,22 +1206,7 @@ void StencilApp::BuildMaterials()
 
 	CreateMaterial("wood", { 1,1,1,1 }, { 0.5f, 0.5f, 0.5f }, 0, 5, { 0,0,0 });
 }
-RenderItem* StencilApp::CreateRenderItem(std::string name, std::string mesh, std::string submesh, std::string mat, int layer)
-{
-	auto item = std::make_unique<RenderItem>();
-	item->World = MathHelper::Identity4x4();
-	item->TexTransform = MathHelper::Identity4x4();
-	item->ObjCBIndex = mAllRitems.size();
-	item->Mat = mMaterials[mat].get();
-	item->Geo = mGeometries[mesh].get();
-	item->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	item->IndexCount = item->Geo->DrawArgs[submesh].IndexCount;
-	item->StartIndexLocation = item->Geo->DrawArgs[submesh].StartIndexLocation;
-	item->BaseVertexLocation = item->Geo->DrawArgs[submesh].BaseVertexLocation;
-	mRitemLayer[layer].push_back(item.get());
-	mAllRitems.push_back(std::move(item));
-	return mAllRitems.back().get();
-}
+
 void StencilApp::BuildRenderItems()
 {
 
@@ -1302,7 +1227,6 @@ void StencilApp::BuildRenderItems()
 
 	//CreateRenderItem("mirrorRitem", "roomGeo", "mirror", "icemirror", (int)RenderLayer::Mirrors);
 	
-	CreateRenderItem("log", "fireGeo", "log", "checkertile", (int)RenderLayer::Opaque);
 	flame = CreateRenderItem("fire", "fireGeo", "fire", "fireMat", (int)RenderLayer::Transparent);
 
 }
@@ -1429,4 +1353,26 @@ void StencilApp::CreateSpotLight(XMFLOAT3 direction, XMFLOAT3 position, XMFLOAT3
 	dir.FalloffEnd = fallOffEnd;
 	dir.SpotPower = spotPower;
 	mMainPassCB.spotLights.push_back(dir);
+}
+
+
+
+void StencilApp::LoadScene(int index)
+{
+	mAllRitems.clear();
+	//for (auto layer : mRitemLayer)
+	//{
+		//layer.clear();
+	//}
+
+
+	//int index = 0;
+	//for(auto item: currentScene->gameObjects)
+	//{
+	//	item->renderIndex = index;
+	//	++index;
+	//	mRitemLayer[layer].push_back(item.get());
+	//	mAllRitems.push_back(std::move(item));
+	//}
+
 }
